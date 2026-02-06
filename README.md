@@ -14,6 +14,7 @@ This service is the beating heart of the game: it handles server-authoritative l
 
 - **Java 21+**: Virtual threads for handling thousands of concurrent WebSocket connections without thread blocking
 - **Spring Boot 3.x**: WebSocket + STOMP protocol, Netty transport, Micrometer observability
+- **Hexagonal Architecture**: Strict separation between Domain, Application, and Infrastructure layers
 - **Real-time sync**: STOMP destinations (`/topic/game/{roomId}`) for broadcasting game state
 - **Server-authoritative**: Collision detection, enemy AI patterns (sine waves, homing), power-up logic
 - **Room management**: In-memory + Redis-backed rooms for players (single or co-op)
@@ -30,7 +31,7 @@ This service is the beating heart of the game: it handles server-authoritative l
 - Spring Kafka (producers)
 - Spring Data Redis
 - Lombok (optional)
-- Maven
+- Gradle
 - Docker
 
 ## Main Endpoints & Protocols
@@ -48,7 +49,7 @@ This service is the beating heart of the game: it handles server-authoritative l
 
 ### Prerequisites
 - Java 21+
-- Maven
+- Gradle
 - Docker & Docker Compose (Postgres, Redis, Kafka from monorepo)
 
 ### 1. Start shared infrastructure
@@ -60,13 +61,13 @@ docker-compose up -d redis kafka zookeeper
 ### 2. Run the service
 ```bash
 cd game-core-service
-mvn clean install
-mvn spring-boot:run
+./gradlew clean build
+./gradlew bootRun
 ```
 
 Or with virtual threads:
 ```bash
-java --enable-preview -XX:+UseZGC -jar target/game-core-service-0.0.1-SNAPSHOT.jar
+java --enable-preview -XX:+UseZGC -jar build/libs/game-core-service-0.0.1-SNAPSHOT.jar
 ```
 
 → WebSocket available at `ws://localhost:8082/ws-game` (configurable)
@@ -91,22 +92,33 @@ game:
     max-players: 2          # co-op support
 ```
 
-## Project Structure
+## Project Structure (Hexagonal)
 
 ```
 game-core-service/
 ├── src/
 │   ├── main/
 │   │   ├── java/com/dronwars/gamecore/
-│   │   │   ├── config/          # WebSocketConfig, KafkaConfig, RedisConfig
-│   │   │   ├── controller/      # GameWebSocketController (@MessageMapping)
-│   │   │   ├── model/           # GameState, PlayerInput, Room (records!)
-│   │   │   ├── service/         # GameLogicService, RoomService, AiService
-│   │   │   ├── engine/          # CollisionEngine, PowerUpEngine
-│   │   │   └── event/           # GameEvent (Kafka messages)
+│   │   │   ├── domain/                  # CORE (No Spring dependencies)
+│   │   │   │   ├── model/               # GameState, Player, Enemy (Entities/Records)
+│   │   │   │   ├── service/             # CollisionEngine, AiEngine (Domain Logic)
+│   │   │   │   └── exception/           # Domain-specific exceptions
+│   │   │   ├── application/             # USE CASES
+│   │   │   │   ├── port/
+│   │   │   │   │   ├── in/              # JoinRoomUseCase, MovePlayerUseCase
+│   │   │   │   │   └── out/             # GameStateOutputPort, EventPublisherPort
+│   │   │   │   ├── usecase/             # Implementation of ports
+│   │   │   │   └── dto/                 # Application DTOs
+│   │   │   ├── infrastructure/          # ADAPTERS
+│   │   │   │   ├── adapter/
+│   │   │   │   │   ├── in/web/          # GameWebSocketController (STOMP)
+│   │   │   │   │   └── out/             # RedisPersistenceAdapter, KafkaEventAdapter
+│   │   │   │   ├── mapper/              # Domain <-> DTO <-> Entity mappers
+│   │   │   │   └── config/              # Spring Beans, WebSocketConfig, KafkaConfig
+│   │   │   └── Application.java         # Entry point
 │   │   └── resources/
 │   │       └── application.yml
-├── pom.xml
+```├── build.gradle
 └── Dockerfile
 ```
 
